@@ -1,0 +1,113 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
+#define BLOCK_SIZE 16
+
+// CUDA kernel for matrix multiplication
+_global_ void matrixMultiplication(int *a, int *b, int *c, int m, int n, int p) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < m && col < p) {
+        int sum = 0;
+        for (int k = 0; k < n; ++k) {
+            sum += a[row * n + k] * b[k * p + col];
+        }
+        c[row * p + col] = sum;
+    }
+}
+
+int main() {
+    int m, n, p;
+    printf("Enter the dimensions of matrix A (m): ");
+    scanf("%d", &m);
+    printf("Enter the dimensions of matrix B (n x p): ");
+    scanf("%d %d", &n, &p);
+
+    int *a, *b, *c;
+    int *dev_a, *dev_b, *dev_c;
+
+    size_t size_a = m * n * sizeof(int);
+    size_t size_b = n * p * sizeof(int);
+    size_t size_c = m * p * sizeof(int);
+
+    // Allocate memory for host matrices
+    a = (int*)malloc(size_a);
+    b = (int*)malloc(size_b);
+    c = (int*)malloc(size_c);
+
+    // Fill matrices A and B with random data
+    srand(time(NULL));
+    for (int i = 0; i < m * n; ++i) {
+        a[i] = rand() % 10;
+    }
+    for (int i = 0; i < n * p; ++i) {
+        b[i] = rand() % 10;
+    }
+
+    // Allocate memory for device matrices
+    cudaMalloc((void**)&dev_a, size_a);
+    cudaMalloc((void**)&dev_b, size_b);
+    cudaMalloc((void**)&dev_c, size_c);
+
+    // Copy host matrices to device
+    cudaMemcpy(dev_a, a, size_a, cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_b, b, size_b, cudaMemcpyHostToDevice);
+
+    // Calculate grid dimensions
+    dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 gridDim((p + blockDim.x - 1) / blockDim.x, (m + blockDim.y - 1) / blockDim.y);
+
+    // Create CUDA events for timing
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    // Record the start event
+    cudaEventRecord(start);
+
+    // Launch kernel
+    matrixMultiplication<<<gridDim, blockDim>>>(dev_a, dev_b, dev_c, m, n, p);
+
+    // Record the stop event
+    cudaEventRecord(stop);
+
+    // Synchronize events
+    cudaEventSynchronize(stop);
+
+    // Calculate the elapsed time
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+
+    // Copy result matrix from device to host
+    cudaMemcpy(c, dev_c, size_c, cudaMemcpyDeviceToHost);
+
+    // Print the result matrix
+    printf("Result matrix:\n");
+    //for (int i = 0; i < m; ++i) {
+      //  for (int j = 0; j < p; ++j) {
+        //    printf("%d ", c[i * p + j]);
+        //}
+        //printf("\n");
+    //}
+
+    // Print the elapsed time
+    printf("Elapsed time: %.3f milliseconds\n", milliseconds);
+
+    // Free CUDA events
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    // Free device memory
+    cudaFree(dev_a);
+    cudaFree(dev_b);
+    cudaFree(dev_c);
+
+    // Free host memory
+    free(a);
+    free(b);
+    free(c);
+
+    return 0;
+}
